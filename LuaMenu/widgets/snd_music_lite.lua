@@ -40,7 +40,7 @@ local peaceTracksIndex = 0
 
 local musicDirOriginal 			= 'luamenu/configs/gameconfig/byar/lobbyMusic/original'
 local musicDirEventAprilFools 	= 'luamenu/configs/gameconfig/byar/lobbyMusic/event/aprilfools'
-local musicDirEventSpooktober 	= 'luamenu/configs/gameconfig/byar/lobbyMusic/event/spooktober'
+local musicDirEventHalloween 	= 'luamenu/configs/gameconfig/byar/lobbyMusic/event/halloween'
 local musicDirEventXmas 		= 'luamenu/configs/gameconfig/byar/lobbyMusic/event/xmas'
 local musicDirCustom 			= 'music/custom/menu'
 local musicDirCustom2 			= 'music/custom/peace'
@@ -88,8 +88,6 @@ local function GetLobbyTrackIdentity(path)
 
 	local eventPack = string.match(normalizedPath, "/lobbymusic/event/([^/]+)/")
 	if eventPack then
-		-- Chobby's old directory name predates the Halloween config/pack name.
-		eventPack = eventPack == "spooktober" and "halloween" or eventPack
 		return eventPack .. "/menu/" .. title
 	end
 
@@ -315,16 +313,15 @@ function playlistBuild()
 		customIntroTrack = VFS.DirList(musicDirEventAprilFools, allowedExtensions)[math.random(1,#VFS.DirList(musicDirEventAprilFools, allowedExtensions))]
 	end
 
-	-- Spooktober
-	-- The lobby directory retains its legacy name, but BAR stores this pack under the Halloween config keys.
+	-- Halloween
 	if Spring.GetConfigInt('UseSoundtrackHalloween', 1) == 1 and (tonumber(os.date("%m")) == 10 and tonumber(os.date("%d")) >= 17) then
-		randomTrackList = playlistMerge(randomTrackList, VFS.DirList(musicDirEventSpooktober, allowedExtensions))
+		randomTrackList = playlistMerge(randomTrackList, VFS.DirList(musicDirEventHalloween, allowedExtensions))
 	end
 	if Spring.GetConfigInt('UseSoundtrackHalloweenPostEvent', 0) == 1 and (not (tonumber(os.date("%m")) == 10 and tonumber(os.date("%d")) >= 17)) then
-		randomTrackList = playlistMerge(randomTrackList, VFS.DirList(musicDirEventSpooktober, allowedExtensions))
+		randomTrackList = playlistMerge(randomTrackList, VFS.DirList(musicDirEventHalloween, allowedExtensions))
 	end
-	if #VFS.DirList(musicDirEventSpooktober, allowedExtensions) >= 1 and Spring.GetConfigInt('UseSoundtrackHalloween', 1) == 1 and (tonumber(os.date("%m")) == 10 and tonumber(os.date("%d")) >= 17) then
-		customIntroTrack = VFS.DirList(musicDirEventSpooktober, allowedExtensions)[math.random(1,#VFS.DirList(musicDirEventSpooktober, allowedExtensions))]
+	if #VFS.DirList(musicDirEventHalloween, allowedExtensions) >= 1 and Spring.GetConfigInt('UseSoundtrackHalloween', 1) == 1 and (tonumber(os.date("%m")) == 10 and tonumber(os.date("%d")) >= 17) then
+		customIntroTrack = VFS.DirList(musicDirEventHalloween, allowedExtensions)[math.random(1,#VFS.DirList(musicDirEventHalloween, allowedExtensions))]
 	end
 
 	-- Xmas
