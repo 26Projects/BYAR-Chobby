@@ -44,6 +44,84 @@ local musicDirCustom 			= 'music/custom/menu'
 local musicDirCustom2 			= 'music/custom/peace'
 
 local allowedExtensions = "{*.ogg,*.mp3}"
+local disabledTracksConfig = "MusicDisabledTracks"
+
+local function NormalizePath(path)
+	return string.lower(string.gsub(path or "", "\\", "/"))
+end
+
+local function GetTrackTitle(path)
+	local title = string.match(NormalizePath(path), "([^/]+)$") or ""
+	title = string.gsub(title, "%.%w+$", "")
+	-- Chobby ships shortened INTRO copies of BAR's menu-version tracks. These
+	-- suffixes describe the copy, rather than being part of the track identity.
+	title = string.gsub(title, "%s*%(%s*intro%s*%)%s*$", "")
+	title = string.gsub(title, "%s*%(%s*menu%s+version[^%)]*%)%s*$", "")
+	title = string.gsub(title, "%s+", " ")
+	return title
+end
+
+local function GetSavedTrackIdentity(path)
+	local normalizedPath = NormalizePath(path)
+	local title = GetTrackTitle(normalizedPath)
+	local eventPack, category = string.match(normalizedPath, "^music/original/events/([^/]+)/([^/]+)/")
+
+	if eventPack and (category == "menu" or category == "peace") then
+		return eventPack .. "/" .. category .. "/" .. title
+	end
+
+	local pack, regularCategory = string.match(normalizedPath, "^music/([^/]+)/([^/]+)/")
+	if pack and (regularCategory == "menu" or regularCategory == "peace") then
+		return pack .. "/" .. regularCategory .. "/" .. title
+	end
+end
+
+local function GetLobbyTrackIdentity(path)
+	local normalizedPath = NormalizePath(path)
+	local title = GetTrackTitle(normalizedPath)
+	local customCategory = string.match(normalizedPath, "^music/custom/([^/]+)/")
+	if customCategory == "menu" or customCategory == "peace" then
+		return "custom/" .. customCategory .. "/" .. title
+	end
+
+	local eventPack = string.match(normalizedPath, "/lobbymusic/event/([^/]+)/")
+	if eventPack then
+		-- Chobby's old directory name predates the Halloween config/pack name.
+		eventPack = eventPack == "spooktober" and "halloween" or eventPack
+		return eventPack .. "/menu/" .. title
+	end
+
+	if string.find(normalizedPath, "/lobbymusic/original/", 1, true) then
+		local category = string.find(normalizedPath, "%(%s*intro%s*%)%.[^/]+$") and "menu" or "peace"
+		return "original/" .. category .. "/" .. title
+	end
+end
+
+local function GetSavedTrackIdentities(configName)
+	local identities = {}
+	for path in string.gmatch(Spring.GetConfigString(configName, ""), "[^|]+") do
+		local identity = GetSavedTrackIdentity(path)
+		if identity then
+			identities[identity] = true
+		end
+	end
+	return identities
+end
+
+local function IsLobbyTrackEnabled(track, disabledTrackIdentities)
+	local identity = GetLobbyTrackIdentity(track)
+	return not (identity and disabledTrackIdentities[identity])
+end
+
+local function FilterDisabledTracks(playlist, disabledTrackIdentities)
+	local filtered = {}
+	for _, track in ipairs(playlist) do
+		if IsLobbyTrackEnabled(track, disabledTrackIdentities) then
+			filtered[#filtered + 1] = track
+		end
+	end
+	return filtered
+end
 
 local easterEggCountdown = Spring.GetConfigInt('ChobbyLaunchesCount', 0) + 1 -- Don't play easter egg intro song for first few launches to not make weird first impression
 Spring.SetConfigInt('ChobbyLaunchesCount', easterEggCountdown)
@@ -178,7 +256,9 @@ function widget:ActivateMenu()
 		return
 	end
 	-- start playing music again
-	playlistBuild()
+	if not playlistBuild() then
+		return
+	end
 	local newTrack = GetRandomTrack(previousTrack)
 	StartTrack(newTrack)
 	previousTrack = newTrack
@@ -206,6 +286,8 @@ function playlistBuild()
 	Spring.Echo("RANDOMSEED", math.ceil(os.clock()*1000000))
 
 	randomTrackList = {}
+	customIntroTrack = nil
+	openTrack = nil
 
 	-- Original Soundtrack List
 	if Spring.GetConfigInt('UseSoundtrackNew', 1) == 1 then
@@ -252,10 +334,18 @@ function playlistBuild()
 		randomTrackList = playlistMerge(randomTrackList, VFS.DirList(musicDirCustom2, allowedExtensions))
 	end
 
+	-- LuaUI writes canonical BAR VFS paths to shared engine config. Translate
+	-- Chobby's copied lobby paths to the same logical identities before filtering.
+	local disabledTrackIdentities = GetSavedTrackIdentities(disabledTracksConfig)
+	randomTrackList = FilterDisabledTracks(randomTrackList, disabledTrackIdentities)
+	if customIntroTrack and not IsLobbyTrackEnabled(customIntroTrack, disabledTrackIdentities) then
+		customIntroTrack = nil
+	end
+
 	if randomTrackList == nil or #randomTrackList == 0 then
 		Spring.Log("snd_music.lite.lua", LOG.NOTICE, "No random track list found, disabling lobby music")
 		widgetHandler:RemoveWidget()
-		return
+		return false
 	end
 
 	-- put all intro tracks in separate list
@@ -306,10 +396,13 @@ function playlistBuild()
 			break
 		end
 	end
+	return true
 end
 
 function widget:Initialize()
-	playlistBuild()
+	if not playlistBuild() then
+		return
+	end
 
 	local Configuration = WG.Chobby.Configuration
 
