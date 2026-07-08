@@ -32,6 +32,8 @@ local previousTrack
 local previousTrackType = "intro" -- intro or peace
 local loopTrack	-- string trackPath
 local randomTrackList
+local introTrackList = {}
+local peaceTrackList = {}
 local openTrack
 local introTracksIndex = 0
 local peaceTracksIndex = 0
@@ -163,6 +165,9 @@ end
 
 local function StartTrack(trackName)
 	trackName = trackName or GetRandomTrack(previousTrack)
+	if not trackName then
+		return
+	end
 	local volume = WG.Chobby.Configuration.menuMusicVolume
 	Spring.Echo("Starting Track", trackName, volume)
 	if volume == 0 then
@@ -250,9 +255,11 @@ local MusicHandler = {
 function widget:ActivateMenu()
 	ingame = false
 	if firstActivation then
-		StartTrack(openTrack)
-		previousTrack = openTrack
 		firstActivation = false
+		if openTrack then
+			StartTrack(openTrack)
+			previousTrack = openTrack
+		end
 		return
 	end
 	-- start playing music again
@@ -286,6 +293,8 @@ function playlistBuild()
 	Spring.Echo("RANDOMSEED", math.ceil(os.clock()*1000000))
 
 	randomTrackList = {}
+	introTrackList = {}
+	peaceTrackList = {}
 	customIntroTrack = nil
 	openTrack = nil
 
@@ -307,13 +316,14 @@ function playlistBuild()
 	end
 
 	-- Spooktober
-	if Spring.GetConfigInt('UseSoundtrackSpooktober', 1) == 1 and (tonumber(os.date("%m")) == 10 and tonumber(os.date("%d")) >= 17) then
+	-- The lobby directory retains its legacy name, but BAR stores this pack under the Halloween config keys.
+	if Spring.GetConfigInt('UseSoundtrackHalloween', 1) == 1 and (tonumber(os.date("%m")) == 10 and tonumber(os.date("%d")) >= 17) then
 		randomTrackList = playlistMerge(randomTrackList, VFS.DirList(musicDirEventSpooktober, allowedExtensions))
 	end
-	if Spring.GetConfigInt('UseSoundtrackSpooktoberPostEvent', 0) == 1 and (not (tonumber(os.date("%m")) == 10 and tonumber(os.date("%d")) >= 17)) then
+	if Spring.GetConfigInt('UseSoundtrackHalloweenPostEvent', 0) == 1 and (not (tonumber(os.date("%m")) == 10 and tonumber(os.date("%d")) >= 17)) then
 		randomTrackList = playlistMerge(randomTrackList, VFS.DirList(musicDirEventSpooktober, allowedExtensions))
 	end
-	if #VFS.DirList(musicDirEventSpooktober, allowedExtensions) >= 1 and Spring.GetConfigInt('UseSoundtrackSpooktober', 1) == 1 and (tonumber(os.date("%m")) == 10 and tonumber(os.date("%d")) >= 17) then
+	if #VFS.DirList(musicDirEventSpooktober, allowedExtensions) >= 1 and Spring.GetConfigInt('UseSoundtrackHalloween', 1) == 1 and (tonumber(os.date("%m")) == 10 and tonumber(os.date("%d")) >= 17) then
 		customIntroTrack = VFS.DirList(musicDirEventSpooktober, allowedExtensions)[math.random(1,#VFS.DirList(musicDirEventSpooktober, allowedExtensions))]
 	end
 
@@ -343,14 +353,14 @@ function playlistBuild()
 	end
 
 	if randomTrackList == nil or #randomTrackList == 0 then
-		Spring.Log("snd_music.lite.lua", LOG.NOTICE, "No random track list found, disabling lobby music")
-		widgetHandler:RemoveWidget()
+		Spring.Log("snd_music.lite.lua", LOG.NOTICE, "No enabled lobby music tracks found; keeping the player silent")
+		-- Keep the widget registered while silent. A later game can re-enable tracks,
+		-- and ActivateMenu must still be available to rebuild the playlist on return.
+		StopTrack()
 		return false
 	end
 
 	-- put all intro tracks in separate list
-	introTrackList = {}
-	peaceTrackList = {}
 	for index, file in pairs(randomTrackList) do
 		local trackTest = file
 		if string.find(trackTest, "(intro)") or string.find(trackTest, "(INTRO)") then
@@ -400,9 +410,8 @@ function playlistBuild()
 end
 
 function widget:Initialize()
-	if not playlistBuild() then
-		return
-	end
+	-- Even an empty playlist must continue initialization so the widget can recover later.
+	playlistBuild()
 
 	local Configuration = WG.Chobby.Configuration
 
